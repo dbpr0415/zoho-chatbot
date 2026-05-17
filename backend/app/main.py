@@ -176,6 +176,43 @@ async def auth_logout():
     return response
 
 
+@app.get("/debug/token")
+async def debug_token(request: Request):
+    """Debug endpoint to verify token validity against Zoho."""
+    user_id = request.cookies.get("user_id")
+    if not user_id:
+        return {"error": "No user_id cookie"}
+        
+    token_data = await db.get_token(user_id)
+    if not token_data:
+        return {"error": "No token in DB"}
+        
+    access_token = token_data["access_token"]
+    
+    import httpx
+    async with httpx.AsyncClient() as client:
+        # Test 1: Accounts API
+        r1 = await client.get(
+            "https://accounts.zoho.in/oauth/user/info",
+            headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+        )
+        
+        # Test 2: Projects API
+        r2 = await client.get(
+            f"{settings.zoho.api_base_url}/portals/",
+            headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+        )
+        
+        return {
+            "token_preview": access_token[:10] + "..." + access_token[-5:],
+            "accounts_status": r1.status_code,
+            "accounts_resp": r1.text,
+            "projects_status": r2.status_code,
+            "projects_resp": r2.text,
+            "portal_name": settings.zoho.portal_name
+        }
+
+
 # ─── Chat Endpoint ───────────────────────────────────────────
 
 @app.post("/chat", response_model=ChatResponse)
