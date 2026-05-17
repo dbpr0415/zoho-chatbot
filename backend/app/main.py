@@ -160,8 +160,19 @@ async def auth_status(request: Request):
 async def auth_logout():
     """Log out the current user by clearing cookies."""
     response = RedirectResponse(url=settings.app.frontend_url)
-    response.delete_cookie("user_id",    path="/", samesite=COOKIE_SAMESITE)
-    response.delete_cookie("user_email", path="/", samesite=COOKIE_SAMESITE)
+    response.delete_cookie(
+        "user_id", 
+        path="/", 
+        samesite=COOKIE_SAMESITE, 
+        secure=COOKIE_SECURE, 
+        httponly=True
+    )
+    response.delete_cookie(
+        "user_email", 
+        path="/", 
+        samesite=COOKIE_SAMESITE, 
+        secure=COOKIE_SECURE
+    )
     return response
 
 
