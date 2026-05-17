@@ -122,8 +122,15 @@ class ZohoClient:
 
     async def list_projects(self) -> list[dict]:
         """Fetch all projects for the authenticated user."""
-        data = await self._request("GET", "projects/")
-        return data.get("projects", [])
+        import httpx
+        try:
+            data = await self._request("GET", "projects/")
+            return data.get("projects", [])
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code in (401, 404):
+                print(f"DEBUG: Gracefully catching {e.response.status_code} on list_projects. Assuming empty.")
+                return []
+            raise
 
     # ─── Task Operations ─────────────────────────────────────
 
