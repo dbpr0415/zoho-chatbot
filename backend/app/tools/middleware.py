@@ -54,7 +54,7 @@ async def validate_create_task(user_id: str, raw_args: dict) -> Tuple[bool, str,
         "description": args.description,
         "assignee": assignee_id,
         "due_date": args.due_date,
-        "priority": args.priority.value if args.priority else None,
+        "priority": args.priority if args.priority else None,
         "_real_project_name": real_project_name
     }
     return True, "", resolved_args
@@ -86,10 +86,10 @@ async def validate_update_task(user_id: str, raw_args: dict) -> Tuple[bool, str,
         "project_id": project_id,
         "task_id": task_id,
         "name": args.new_name,
-        "status": args.status.value if args.status else None,
+        "status": args.status if args.status else None,
         "assignee": assignee_id,
         "due_date": args.due_date,
-        "priority": args.priority.value if args.priority else None,
+        "priority": args.priority if args.priority else None,
         "_real_project_name": real_project_name,
         "_real_task_name": real_task_name
     }
