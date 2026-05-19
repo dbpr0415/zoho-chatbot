@@ -23,14 +23,16 @@ CONTEXT: {ctx}
 HISTORY: {history}
 MEMORY: {long_term}"""
 
+
 def get_query_prompt(ctx: str, history: str, long_term: str) -> str:
     return BASE_AGENT_PROMPT.format(
         role="Query Agent (READ ONLY) - use tools to fetch and summarize data. Answer general memory questions directly from MEMORY.",
         ctx=ctx,
         extra_context="",
         history=history,
-        long_term=long_term
+        long_term=long_term,
     )
+
 
 def get_action_prompt(ctx: str, history: str, long_term: str, task_context: str) -> str:
     return BASE_AGENT_PROMPT.format(
@@ -38,8 +40,11 @@ def get_action_prompt(ctx: str, history: str, long_term: str, task_context: str)
         ctx=ctx,
         extra_context=task_context,
         history=history,
-        long_term=long_term
+        long_term=long_term,
     )
 
+
 def get_fallback_prompt() -> str:
-    return "Tell the user you couldn't retrieve the requested data. Be brief and helpful."
+    return (
+        "Tell the user you couldn't retrieve the requested data. Be brief and helpful."
+    )

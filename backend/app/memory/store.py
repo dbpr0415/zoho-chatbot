@@ -1,5 +1,6 @@
 import json
 from typing import Optional
+
 from app.database import db
 
 
@@ -74,8 +75,7 @@ class MemoryStore:
     async def update_project_context(self, project_id: str, project_name: str):
         """Track which project the user is currently working with."""
         await self.store_context(
-            "current_project",
-            json.dumps({"id": project_id, "name": project_name})
+            "current_project", json.dumps({"id": project_id, "name": project_name})
         )
         await self.store_context(f"accessed_project_{project_id}", project_name)
 
@@ -129,9 +129,13 @@ class MemoryStore:
             lines.append(f"💡 **Last response I gave:** _{last_resp[:120]}_")
 
         # Projects accessed
-        proj_contexts = [v for k, v in mem_map.items() if k.startswith("accessed_project_")]
+        proj_contexts = [
+            v for k, v in mem_map.items() if k.startswith("accessed_project_")
+        ]
         if proj_contexts:
-            lines.append(f"🗂️ **Projects you've accessed:** _{', '.join(proj_contexts[:3])}_")
+            lines.append(
+                f"🗂️ **Projects you've accessed:** _{', '.join(proj_contexts[:3])}_"
+            )
 
         lines.append(
             "\n_I automatically remember your last topic, project, and actions across sessions._"

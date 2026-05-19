@@ -6,10 +6,10 @@ NOTE: BaseHTTPMiddleware swallows HTTPException and converts it to 500.
 We return JSONResponse directly to ensure proper 401 status codes.
 """
 
+from app.database import db
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
-from app.database import db
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
@@ -19,9 +19,16 @@ class AuthMiddleware(BaseHTTPMiddleware):
     """
 
     PUBLIC_ROUTES = {
-        "/auth/login", "/auth/callback", "/auth/status",
-        "/auth/logout", "/", "/health", "/docs", "/openapi.json",
-        "/redoc", "/favicon.ico",
+        "/auth/login",
+        "/auth/callback",
+        "/auth/status",
+        "/auth/logout",
+        "/",
+        "/health",
+        "/docs",
+        "/openapi.json",
+        "/redoc",
+        "/favicon.ico",
     }
 
     async def dispatch(self, request: Request, call_next):
@@ -48,11 +55,13 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if not token_data:
             return JSONResponse(
                 status_code=401,
-                content={"detail": "Session expired. Please login again via /auth/login"},
+                content={
+                    "detail": "Session expired. Please login again via /auth/login"
+                },
             )
 
         # Attach user info to request state
-        request.state.user_id    = user_id
+        request.state.user_id = user_id
         request.state.user_email = token_data.get("user_email", "")
 
         return await call_next(request)

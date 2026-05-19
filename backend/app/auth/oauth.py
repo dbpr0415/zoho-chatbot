@@ -3,11 +3,10 @@ Zoho OAuth 2.0 Authentication module.
 Implements Authorization Code Grant flow.
 """
 
-import httpx
 from datetime import datetime, timedelta
-from typing import Optional
 from urllib.parse import urlencode
 
+import httpx
 from app.config import settings
 from app.database import db
 
@@ -54,7 +53,7 @@ class ZohoOAuth:
                     "client_secret": self.client_secret,
                     "redirect_uri": self.redirect_uri,
                     "code": authorization_code,
-                }
+                },
             )
             response.raise_for_status()
             data = response.json()
@@ -79,7 +78,7 @@ class ZohoOAuth:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     "https://accounts.zoho.in/oauth/user/info",
-                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
                 )
                 if response.status_code == 200:
                     return response.json()
@@ -92,7 +91,7 @@ class ZohoOAuth:
                 portal_url = f"{settings.zoho.api_base_url}/portals/"
                 response = await client.get(
                     portal_url,
-                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+                    headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
                 )
                 if response.status_code == 200:
                     data = response.json()
@@ -109,6 +108,7 @@ class ZohoOAuth:
 
         # Last fallback: generate ID from token
         import hashlib
+
         user_hash = hashlib.sha256(access_token.encode()).hexdigest()[:16]
         return {"ZUID": f"user_{user_hash}", "Email": "", "Display_Name": "User"}
 

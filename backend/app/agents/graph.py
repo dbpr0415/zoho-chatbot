@@ -5,29 +5,38 @@ Delegates execution and business logic to modular services in app/services.
 """
 
 import asyncio
-from typing import TypedDict, Annotated
-from langchain_core.messages import HumanMessage, AIMessage, SystemMessage, ToolMessage, BaseMessage
-from langchain_groq import ChatGroq
-from langgraph.graph import StateGraph, END
+from typing import Annotated, TypedDict
 
-from app.config import settings
-from app.agents.supervisor import Supervisor
-from app.agents.query_agent import QueryAgent
 from app.agents.action_agent import ActionAgent
 from app.agents.prompts import get_fallback_prompt
-from app.tools.query_tools import set_current_user
-from app.services.memory_service import MemoryService
-from app.services.hil_service import HILService
-from app.services.tool_executor import ToolExecutionService
-from app.formatters.response_formatter import ResponseFormatter
+from app.agents.query_agent import QueryAgent
+from app.agents.supervisor import Supervisor
+from app.config import settings
 from app.database import db
+from app.formatters.response_formatter import ResponseFormatter
+from app.services.hil_service import HILService
+from app.services.memory_service import MemoryService
+from app.services.tool_executor import ToolExecutionService
+from app.tools.query_tools import set_current_user
 from app.zoho.client import ZohoClient
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
+from langchain_groq import ChatGroq
+from langgraph.graph import END, StateGraph
+
 
 def _merge_messages(left: list, right: list) -> list:
     return left + right
 
+
 def _pick_max(left: int, right: int) -> int:
     return max(left, right)
+
 
 class GraphState(TypedDict):
     messages: Annotated[list[BaseMessage], _merge_messages]
@@ -36,14 +45,18 @@ class GraphState(TypedDict):
     agent_type: str  # "query" or "action"
     tool_rounds: Annotated[int, _pick_max]
 
+
 async def run_tools(state: GraphState) -> dict:
     last = state["messages"][-1]
-    
+
     if not isinstance(last, AIMessage) or not last.tool_calls:
         return {"messages": [], "tool_rounds": state.get("tool_rounds", 0)}
 
-    results = await asyncio.gather(*[ToolExecutionService.invoke_tool(tc) for tc in last.tool_calls])
+    results = await asyncio.gather(
+        *[ToolExecutionService.invoke_tool(tc) for tc in last.tool_calls]
+    )
     return {"messages": list(results), "tool_rounds": state.get("tool_rounds", 0) + 1}
+
 
 class ChatGraph:
     MAX_TOOL_ROUNDS = 3
@@ -75,112 +88,201 @@ class ChatGraph:
 
         g.set_entry_point("router")
 
-        g.add_conditional_edges("router", lambda s: s["agent_type"],
-                                {"query": "query_agent", "action": "action_agent"})
+        g.add_conditional_edges(
+            "router",
+            lambda s: s["agent_type"],
+            {"query": "query_agent", "action": "action_agent"},
+        )
 
-        g.add_conditional_edges("query_agent", self._has_tool_calls,
-                                {"tools": "run_tools", "done": END})
-        g.add_conditional_edges("action_agent", self._has_tool_calls,
-                                {"tools": "run_tools", "done": END})
+        g.add_conditional_edges(
+            "query_agent", self._has_tool_calls, {"tools": "run_tools", "done": END}
+        )
+        g.add_conditional_edges(
+            "action_agent", self._has_tool_calls, {"tools": "run_tools", "done": END}
+        )
 
-        g.add_conditional_edges("run_tools", self._after_tools,
-                                {"query": "query_agent", "action": "action_agent", "stop": "force_respond"})
+        g.add_conditional_edges(
+            "run_tools",
+            self._after_tools,
+            {"query": "query_agent", "action": "action_agent", "stop": "force_respond"},
+        )
 
         g.add_edge("force_respond", END)
 
         return g.compile()
+
     async def _router(self, state: GraphState) -> dict:
-        user_msg = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
+        user_msg = next(
+            (
+                m.content
+                for m in reversed(state["messages"])
+                if isinstance(m, HumanMessage)
+            ),
+            "",
+        )
 
         pending = await HILService.get_pending_action(state["session_id"])
         if pending:
             return {"agent_type": "action"}
 
-        history, _, _ = await MemoryService.get_context(state["user_id"], state["session_id"])
+        history, _, _ = await MemoryService.get_context(
+            state["user_id"], state["session_id"]
+        )
         route = await self.supervisor.route(user_msg, history)
         return {"agent_type": route}
+
     async def _query_agent(self, state: GraphState) -> dict:
         user_id = state["user_id"]
         session_id = state["session_id"]
-        user_msg = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
+        user_msg = next(
+            (
+                m.content
+                for m in reversed(state["messages"])
+                if isinstance(m, HumanMessage)
+            ),
+            "",
+        )
 
-        memory_summary = await MemoryService.check_memory_trigger(user_msg, user_id, session_id)
+        memory_summary = await MemoryService.check_memory_trigger(
+            user_msg, user_id, session_id
+        )
         if memory_summary:
             return {"messages": [AIMessage(content=memory_summary)]}
 
         history, long_term, ctx = await MemoryService.get_context(user_id, session_id)
 
-        sys = SystemMessage(content=self.query_agent.get_prompt(ctx, history, long_term))
+        sys = SystemMessage(
+            content=self.query_agent.get_prompt(ctx, history, long_term)
+        )
 
         msgs = [sys] + state["messages"]
         try:
             resp = await self.query_agent.agent.ainvoke(msgs)
         except Exception as e:
-            result = await ToolExecutionService.handle_malformed_tool_error(str(e), user_id)
-            if result:
-                return {"messages": [AIMessage(content=result)]}
-            return {"messages": [AIMessage(content="⚠️ I couldn't process that request. Please try rephrasing it.")]}
+            return {
+                "messages": [
+                    AIMessage(
+                        content="⚠️ I couldn't process that request. Please try rephrasing it."
+                    )
+                ]
+            }
 
         return {"messages": [resp]}
+
     async def _action_agent(self, state: GraphState) -> dict:
         user_id = state["user_id"]
         session_id = state["session_id"]
-        user_msg = next((m.content for m in reversed(state["messages"]) if isinstance(m, HumanMessage)), "")
+        user_msg = next(
+            (
+                m.content
+                for m in reversed(state["messages"])
+                if isinstance(m, HumanMessage)
+            ),
+            "",
+        )
 
         pending = await HILService.get_pending_action(session_id)
         if pending:
             user_msg_lower = user_msg.strip().lower()
-            if user_msg_lower in ("yes", "y", "confirm", "approve", "sure", "go ahead", "do it", "ok"):
+            if user_msg_lower in (
+                "yes",
+                "y",
+                "confirm",
+                "approve",
+                "sure",
+                "go ahead",
+                "do it",
+                "ok",
+            ):
                 await HILService.resolve_pending_action(pending["id"], "approved")
                 try:
-                    result = await ToolExecutionService.execute_pending_action(user_id, pending["tool_name"], pending["parameters"])
+                    result = await ToolExecutionService.execute_pending_action(
+                        user_id, pending["tool_name"], pending["parameters"]
+                    )
                     return {"messages": [AIMessage(content=result)]}
                 except Exception as e:
-                    return {"messages": [AIMessage(content=f"❌ Action failed: {str(e)}")]}
+                    return {
+                        "messages": [AIMessage(content=f"❌ Action failed: {str(e)}")]
+                    }
             else:
                 await HILService.resolve_pending_action(pending["id"], "declined")
-                return {"messages": [AIMessage(content="❌ Action cancelled. No changes were made.")]}
+                return {
+                    "messages": [
+                        AIMessage(content="❌ Action cancelled. No changes were made.")
+                    ]
+                }
 
         history, long_term, ctx = await MemoryService.get_context(user_id, session_id)
-        
+
         task_context = ""
         try:
             c = ZohoClient(user_id)
             projects = await c.list_projects()
-            found_pid = next((p.get("id_string", str(p.get("id", ""))) for p in projects if p.get("name", "") and p["name"].lower() in user_msg.lower()), None)
-            
+            found_pid = next(
+                (
+                    p.get("id_string", str(p.get("id", "")))
+                    for p in projects
+                    if p.get("name", "") and p["name"].lower() in user_msg.lower()
+                ),
+                None,
+            )
+
             if found_pid:
                 tasks = await c.list_tasks(found_pid)
                 if tasks:
-                    task_lines = [f"  - {t.get('name','?')} (ID: {t.get('id_string', t.get('id','?'))}) Status: {t.get('status',{}).get('name','?') if isinstance(t.get('status'), dict) else '?'}" for t in tasks[:10]]
-                    task_context = f"\n\nREAL TASKS in the discussed project:\n" + "\n".join(task_lines)
+                    task_lines = [
+                        f"  - {t.get('name','?')} (ID: {t.get('id_string', t.get('id','?'))}) Status: {t.get('status',{}).get('name','?') if isinstance(t.get('status'), dict) else '?'}"
+                        for t in tasks[:10]
+                    ]
+                    task_context = (
+                        f"\n\nREAL TASKS in the discussed project:\n"
+                        + "\n".join(task_lines)
+                    )
         except Exception:
             pass
 
-        sys = SystemMessage(content=self.action_agent.get_prompt(ctx, history, long_term, task_context))
+        sys = SystemMessage(
+            content=self.action_agent.get_prompt(ctx, history, long_term, task_context)
+        )
 
         msgs = [sys] + state["messages"]
         resp = await self.action_agent.agent.ainvoke(msgs)
 
         if resp.tool_calls:
-            error_msg = await HILService.validate_and_store_tool_calls(resp.tool_calls, user_id, session_id)
+            error_msg = await HILService.validate_and_store_tool_calls(
+                resp.tool_calls, user_id, session_id
+            )
             if error_msg:
                 return {"messages": [AIMessage(content=error_msg)]}
-            
-            return {"messages": [AIMessage(content=HILService.format_hil_message(resp.tool_calls))]}
+
+            return {
+                "messages": [
+                    AIMessage(content=HILService.format_hil_message(resp.tool_calls))
+                ]
+            }
 
         return {"messages": [resp]}
+
     async def _force_respond(self, state: GraphState) -> dict:
-        tool_data = [m.content for m in state["messages"] if isinstance(m, ToolMessage) and m.content]
+        tool_data = [
+            m.content
+            for m in state["messages"]
+            if isinstance(m, ToolMessage) and m.content
+        ]
         if tool_data:
             return {"messages": [AIMessage(content="\n\n".join(tool_data))]}
 
-        user_msg = next((m.content for m in state["messages"] if isinstance(m, HumanMessage)), "")
-        resp = await self.plain_llm.ainvoke([
-            SystemMessage(content=get_fallback_prompt()),
-            HumanMessage(content=user_msg)
-        ])
+        user_msg = next(
+            (m.content for m in state["messages"] if isinstance(m, HumanMessage)), ""
+        )
+        resp = await self.plain_llm.ainvoke(
+            [
+                SystemMessage(content=get_fallback_prompt()),
+                HumanMessage(content=user_msg),
+            ]
+        )
         return {"messages": [resp]}
+
     def _has_tool_calls(self, state: GraphState) -> str:
         last = state["messages"][-1] if state["messages"] else None
         if last and isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
@@ -194,7 +296,10 @@ class ChatGraph:
             if isinstance(msg, ToolMessage) and msg.content and len(msg.content) > 100:
                 return "stop"
         return state["agent_type"]
-    async def process_message(self, user_id: str, session_id: str, message: str) -> dict:
+
+    async def process_message(
+        self, user_id: str, session_id: str, message: str
+    ) -> dict:
         set_current_user(user_id)
         await db.create_session(session_id, user_id)
 
@@ -211,19 +316,26 @@ class ChatGraph:
         final = ResponseFormatter.extract_response(result.get("messages", []))
 
         from app.memory.store import MemoryStore
+
         memory = MemoryStore(user_id, session_id)
         await memory.add_message("user", message)
-        await memory.add_message("assistant", final, {"agent": result.get("agent_type", "")})
+        await memory.add_message(
+            "assistant", final, {"agent": result.get("agent_type", "")}
+        )
 
         await MemoryService.save_long_term(user_id, session_id, message, final)
 
         pending = await HILService.get_pending_action(session_id)
-        pending_data = {
-            "action_type": pending["action_type"],
-            "tool_name": pending["tool_name"],
-            "description": pending["description"],
-            "parameters": pending["parameters"],
-        } if pending else None
+        pending_data = (
+            {
+                "action_type": pending["action_type"],
+                "tool_name": pending["tool_name"],
+                "description": pending["description"],
+                "parameters": pending["parameters"],
+            }
+            if pending
+            else None
+        )
 
         return {
             "message": final,
@@ -231,12 +343,15 @@ class ChatGraph:
             "pending_action": pending_data,
         }
 
+
 _graph: ChatGraph = None
+
 
 def initialize_graph():
     global _graph
     _graph = ChatGraph()
     return _graph
+
 
 def get_graph() -> ChatGraph:
     global _graph

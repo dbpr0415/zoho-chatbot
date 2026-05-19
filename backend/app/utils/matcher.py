@@ -1,6 +1,8 @@
 import time
-from thefuzz import process, fuzz
-from typing import List, Dict, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
+
+from thefuzz import fuzz, process
+
 
 class EntityResolutionService:
     def __init__(self):
@@ -19,7 +21,13 @@ class EntityResolutionService:
     def _set_cache(self, cache_key: str, data: Any):
         self._cache[cache_key] = (data, time.time())
 
-    def resolve_entity(self, query: str, entities: List[Dict], name_key: str = "name", id_key: str = "id_string") -> Tuple[Optional[str], Optional[str], int, str]:
+    def resolve_entity(
+        self,
+        query: str,
+        entities: List[Dict],
+        name_key: str = "name",
+        id_key: str = "id_string",
+    ) -> Tuple[Optional[str], Optional[str], int, str]:
         """
         Dynamically resolves an entity using exact, normalized, and fuzzy matching.
         Returns: (resolved_id, resolved_name, confidence_score, status_message)
@@ -28,7 +36,7 @@ class EntityResolutionService:
             return None, None, 0, "Empty query or entity list."
 
         query_lower = query.lower().strip()
-        
+
         # 1. Exact Match
         for entity in entities:
             name = entity.get(name_key, "")
@@ -46,12 +54,12 @@ class EntityResolutionService:
         # 3. Fuzzy Match
         entity_map = {e.get(name_key, ""): e for e in entities if e.get(name_key)}
         choices = list(entity_map.keys())
-        
+
         if not choices:
             return None, None, 0, "No valid names to match against."
 
         match = process.extractOne(query_lower, choices, scorer=fuzz.token_sort_ratio)
-        
+
         if not match:
             return None, None, 0, "rejected"
 
@@ -65,5 +73,6 @@ class EntityResolutionService:
             return None, matched_name, score, "clarification_needed"
         else:
             return None, None, score, "rejected"
+
 
 resolver = EntityResolutionService()

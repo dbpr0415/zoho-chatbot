@@ -1,8 +1,9 @@
 import json
-from typing import Optional, Dict, Any, List
-from langchain_core.messages import AIMessage
+from typing import Any, Dict, List, Optional
+
 from app.database import db
 from app.services.safe_executor import SafeExecutorService
+
 
 class HILService:
     @staticmethod
@@ -14,22 +15,26 @@ class HILService:
         await db.resolve_pending_action(action_id, status)
 
     @staticmethod
-    async def validate_and_store_tool_calls(tool_calls: List[Dict], user_id: str, session_id: str) -> Optional[str]:
+    async def validate_and_store_tool_calls(
+        tool_calls: List[Dict], user_id: str, session_id: str
+    ) -> Optional[str]:
         """Validates tool calls via SafeExecutorService and stores them as pending actions.
         Returns an error message if validation fails, otherwise None.
         """
         for tc in tool_calls:
             tool_name = tc["name"]
             raw_args = tc["args"]
-            
+
             # Centralized Validation & Formatting
-            is_valid, msg, resolved_args, desc = await SafeExecutorService.validate_and_format(
-                user_id, tool_name, raw_args
+            is_valid, msg, resolved_args, desc = (
+                await SafeExecutorService.validate_and_format(
+                    user_id, tool_name, raw_args
+                )
             )
-                
+
             if not is_valid:
                 return msg  # Return error message immediately
-                
+
             # Fallback description if formatter fails
             if not desc:
                 desc = f"{tool_name}: {json.dumps(resolved_args)}"

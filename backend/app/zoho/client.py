@@ -3,9 +3,10 @@ Zoho Projects API client.
 Handles all REST API interactions with Zoho Projects.
 """
 
-import httpx
 from datetime import datetime, timedelta
 from typing import Optional
+
+import httpx
 from app.config import settings
 from app.database import db
 
@@ -26,7 +27,11 @@ class ZohoClient:
 
     async def _ensure_valid_token(self):
         """Ensure we have a valid access token, refreshing if necessary."""
-        if self._access_token and self._token_expires_at and datetime.utcnow() < self._token_expires_at:
+        if (
+            self._access_token
+            and self._token_expires_at
+            and datetime.utcnow() < self._token_expires_at
+        ):
             return
 
         token_data = await db.get_token(self.user_id)
@@ -52,18 +57,18 @@ class ZohoClient:
                     "client_id": settings.zoho.client_id,
                     "client_secret": settings.zoho.client_secret,
                     "refresh_token": refresh_token,
-                }
+                },
             )
             response.raise_for_status()
             data = response.json()
 
             self._access_token = data["access_token"]
-            self._token_expires_at = datetime.utcnow() + timedelta(seconds=data.get("expires_in", 3600))
+            self._token_expires_at = datetime.utcnow() + timedelta(
+                seconds=data.get("expires_in", 3600)
+            )
 
             await db.update_access_token(
-                self.user_id,
-                self._access_token,
-                self._token_expires_at.isoformat()
+                self.user_id, self._access_token, self._token_expires_at.isoformat()
             )
 
     async def _resolve_portal(self):
@@ -123,19 +128,27 @@ class ZohoClient:
     async def list_projects(self) -> list[dict]:
         """Fetch all projects for the authenticated user."""
         import httpx
+
         try:
             data = await self._request("GET", "projects/")
             return data.get("projects", [])
         except httpx.HTTPStatusError as e:
             if e.response.status_code in (401, 404):
-                print(f"DEBUG: Gracefully catching {e.response.status_code} on list_projects. Assuming empty.")
+                print(
+                    f"DEBUG: Gracefully catching {e.response.status_code} on list_projects. Assuming empty."
+                )
                 return []
             raise
 
     # ─── Task Operations ─────────────────────────────────────
 
-    async def list_tasks(self, project_id: str, status: str = None,
-                         assignee: str = None, due_date: str = None) -> list[dict]:
+    async def list_tasks(
+        self,
+        project_id: str,
+        status: str = None,
+        assignee: str = None,
+        due_date: str = None,
+    ) -> list[dict]:
         """List tasks for a project — returns all tasks (no server-side filters needed)."""
         data = await self._request("GET", f"projects/{project_id}/tasks/")
         print(f"DEBUG: Tasks response keys: {list(data.keys()) if data else 'empty'}")
@@ -147,14 +160,25 @@ class ZohoClient:
         data = await self._request("GET", f"projects/{project_id}/tasks/{task_id}/")
         return data.get("tasks", [{}])[0] if data.get("tasks") else {}
 
-    async def create_task(self, project_id: str, name: str, description: str = None,
-                          assignee: str = None, due_date: str = None,
-                          priority: str = None) -> dict:
+    async def create_task(
+        self,
+        project_id: str,
+        name: str,
+        description: str = None,
+        assignee: str = None,
+        due_date: str = None,
+        priority: str = None,
+    ) -> dict:
         """Create a new task in a project."""
         # Valid Zoho priority values
         PRIORITY_MAP = {
-            "none": "None", "low": "Low", "medium": "Medium", "normal": "Medium",
-            "high": "High", "urgent": "High", "critical": "High",
+            "none": "None",
+            "low": "Low",
+            "medium": "Medium",
+            "normal": "Medium",
+            "high": "High",
+            "urgent": "High",
+            "critical": "High",
         }
 
         form_data = {"name": name}
@@ -172,7 +196,9 @@ class ZohoClient:
                 form_data["priority"] = zoho_priority
 
         print(f"DEBUG: create_task form_data: {form_data}")
-        data = await self._request("POST", f"projects/{project_id}/tasks/", data=form_data)
+        data = await self._request(
+            "POST", f"projects/{project_id}/tasks/", data=form_data
+        )
         return data.get("tasks", [{}])[0] if data.get("tasks") else {}
 
     @staticmethod
@@ -180,45 +206,72 @@ class ZohoClient:
         """Normalize various date formats to MM-DD-YYYY (Zoho format).
         Returns None if the string is not a recognizable date."""
         import re
+
         if not date_str:
             return None
         s = date_str.strip()
         # Skip obvious non-dates
-        if s.lower() in ("none", "null", "n/a", "no due date", "no date", "unset", "", "-", "tbd"):
+        if s.lower() in (
+            "none",
+            "null",
+            "n/a",
+            "no due date",
+            "no date",
+            "unset",
+            "",
+            "-",
+            "tbd",
+        ):
             return None
         # Already MM-DD-YYYY
-        if re.match(r'^\d{2}-\d{2}-\d{4}$', s):
+        if re.match(r"^\d{2}-\d{2}-\d{4}$", s):
             return s
         # YYYY-MM-DD → MM-DD-YYYY
-        m = re.match(r'^(\d{4})-(\d{2})-(\d{2})$', s)
+        m = re.match(r"^(\d{4})-(\d{2})-(\d{2})$", s)
         if m:
             return f"{m.group(2)}-{m.group(3)}-{m.group(1)}"
         # MM/DD/YYYY → MM-DD-YYYY
-        m = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', s)
+        m = re.match(r"^(\d{2})/(\d{2})/(\d{4})$", s)
         if m:
             return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
         # D Mon YYYY e.g. "15 May 2025"
         try:
             from datetime import datetime
+
             dt = datetime.strptime(s, "%d %b %Y")
             return dt.strftime("%m-%d-%Y")
         except ValueError:
             pass
         return None  # Unrecognizable — don't send garbage to Zoho
 
-    async def update_task(self, project_id: str, task_id: str,
-                          name: str = None, status: str = None,
-                          assignee: str = None, due_date: str = None,
-                          priority: str = None) -> dict:
+    async def update_task(
+        self,
+        project_id: str,
+        task_id: str,
+        name: str = None,
+        status: str = None,
+        assignee: str = None,
+        due_date: str = None,
+        priority: str = None,
+    ) -> dict:
         """Update an existing task."""
         STATUS_MAP = {
-            "open": "Open", "closed": "Closed", "close": "Closed",
-            "done": "Closed", "complete": "Closed", "completed": "Closed",
-            "in progress": "In Progress", "inprogress": "In Progress",
+            "open": "Open",
+            "closed": "Closed",
+            "close": "Closed",
+            "done": "Closed",
+            "complete": "Closed",
+            "completed": "Closed",
+            "in progress": "In Progress",
+            "inprogress": "In Progress",
         }
         PRIORITY_MAP = {
-            "none": None, "low": "Low", "medium": "Medium",
-            "normal": "Medium", "high": "High", "urgent": "High",
+            "none": None,
+            "low": "Low",
+            "medium": "Medium",
+            "normal": "Medium",
+            "high": "High",
+            "urgent": "High",
         }
 
         form_data = {}
@@ -238,7 +291,9 @@ class ZohoClient:
                 form_data["priority"] = zoho_priority
 
         print(f"DEBUG: update_task form_data: {form_data}")
-        data = await self._request("POST", f"projects/{project_id}/tasks/{task_id}/", data=form_data)
+        data = await self._request(
+            "POST", f"projects/{project_id}/tasks/{task_id}/", data=form_data
+        )
         return data.get("tasks", [{}])[0] if data.get("tasks") else {}
 
     async def delete_task(self, project_id: str, task_id: str) -> dict:

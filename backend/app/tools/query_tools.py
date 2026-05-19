@@ -1,5 +1,6 @@
-from langchain_core.tools import tool
 from typing import Optional
+
+from langchain_core.tools import tool
 
 _current_user_id: str = ""
 
@@ -11,18 +12,21 @@ def set_current_user(user_id: str):
 
 from app.utils.matcher import resolver
 
+
 async def _resolve_project_id(project_id_or_name: str) -> str:
     """Auto-resolve project name using EntityResolver."""
     if project_id_or_name.isdigit():
         return project_id_or_name
     from app.zoho.client import ZohoClient
+
     client = ZohoClient(_current_user_id)
     projects = await client.list_projects()
-    
+
     pid, _, _, _ = resolver.resolve_entity(project_id_or_name, projects)
     if pid:
         return pid
     return project_id_or_name  # fallback
+
 
 async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
     """Resolve a task reference using EntityResolver."""
@@ -30,6 +34,7 @@ async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
         return project_id, task_ref
 
     from app.zoho.client import ZohoClient
+
     client = ZohoClient(_current_user_id)
     tasks = await client.list_tasks(project_id)
 
@@ -38,7 +43,15 @@ async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
 
     # Index references fallback
     ref = task_ref.lower().strip()
-    index_map = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2, "last": -1}
+    index_map = {
+        "first": 0,
+        "1st": 0,
+        "second": 1,
+        "2nd": 1,
+        "third": 2,
+        "3rd": 2,
+        "last": -1,
+    }
     for word, idx in index_map.items():
         if word in ref:
             try:
@@ -58,6 +71,7 @@ async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
 async def list_projects() -> str:
     """Fetch all projects for the authenticated user. Returns project names, IDs, status, and task counts."""
     from app.zoho.client import ZohoClient
+
     client = ZohoClient(_current_user_id)
     projects = await client.list_projects()
 
@@ -71,12 +85,16 @@ async def list_projects() -> str:
         status = p.get("status", "active")
         tc = p.get("task_count", {})
         open_t = tc.get("open", 0) if isinstance(tc, dict) else 0
-        lines.append(f"{i}. **{name}** (ID: `{pid}`)\n   Status: {status} | Open Tasks: {open_t}\n")
+        lines.append(
+            f"{i}. **{name}** (ID: `{pid}`)\n   Status: {status} | Open Tasks: {open_t}\n"
+        )
     return "\n".join(lines)
 
 
 @tool
-async def list_tasks(project_id: str, status: Optional[str] = None, assignee: Optional[str] = None) -> str:
+async def list_tasks(
+    project_id: str, status: Optional[str] = None, assignee: Optional[str] = None
+) -> str:
     """List tasks for a project with optional filters.
 
     Args:
@@ -85,6 +103,7 @@ async def list_tasks(project_id: str, status: Optional[str] = None, assignee: Op
         assignee: Optional filter — assignee name
     """
     from app.zoho.client import ZohoClient
+
     pid = await _resolve_project_id(project_id)
     client = ZohoClient(_current_user_id)
     tasks = await client.list_tasks(pid, status=status, assignee=assignee)
@@ -102,8 +121,12 @@ async def list_tasks(project_id: str, status: Optional[str] = None, assignee: Op
         due = t.get("end_date", "No due date")
         det = t.get("details", {})
         owners = det.get("owners", []) if isinstance(det, dict) else []
-        own = ", ".join([o.get("name", "?") for o in owners]) if owners else "Unassigned"
-        lines.append(f"{i}. **{name}** (ID: `{tid}`)\n   Status: {st} | Priority: {pri} | Assignee: {own} | Due: {due}\n")
+        own = (
+            ", ".join([o.get("name", "?") for o in owners]) if owners else "Unassigned"
+        )
+        lines.append(
+            f"{i}. **{name}** (ID: `{tid}`)\n   Status: {st} | Priority: {pri} | Assignee: {own} | Due: {due}\n"
+        )
     return "\n".join(lines)
 
 
@@ -116,6 +139,7 @@ async def get_task_details(project_id: str, task_id: str) -> str:
         task_id: Task ID (numeric), task name, or index like 'first', '1', 'go out'
     """
     from app.zoho.client import ZohoClient
+
     pid = await _resolve_project_id(project_id)
     pid, tid = await _resolve_task_id(pid, task_id)
     client = ZohoClient(_current_user_id)
@@ -155,6 +179,7 @@ async def list_project_members(project_id: str) -> str:
         project_id: Numeric project ID or project name (auto-resolved)
     """
     from app.zoho.client import ZohoClient
+
     pid = await _resolve_project_id(project_id)
     client = ZohoClient(_current_user_id)
     members = await client.list_project_members(pid)
@@ -164,7 +189,9 @@ async def list_project_members(project_id: str) -> str:
 
     lines = ["👥 **Project Members:**\n"]
     for i, m in enumerate(members, 1):
-        lines.append(f"{i}. **{m.get('name','?')}** — {m.get('role','Member')}\n   Email: {m.get('email','N/A')}\n")
+        lines.append(
+            f"{i}. **{m.get('name','?')}** — {m.get('role','Member')}\n   Email: {m.get('email','N/A')}\n"
+        )
     return "\n".join(lines)
 
 
@@ -176,6 +203,7 @@ async def get_task_utilisation(project_id: str) -> str:
         project_id: Project ID or name ('interviews', 'sky secue', 'protein'). Use 'all' to check across all projects.
     """
     from app.zoho.client import ZohoClient
+
     client = ZohoClient(_current_user_id)
 
     # If 'all' or vague, aggregate across all projects
@@ -208,8 +236,10 @@ async def get_task_utilisation(project_id: str) -> str:
         det = t.get("details", {})
         owners = det.get("owners", []) if isinstance(det, dict) else []
         s = t.get("status", {})
-        is_done = "closed" in (s.get("name", "") if isinstance(s, dict) else s).lower() or \
-                  "completed" in (s.get("name", "") if isinstance(s, dict) else s).lower()
+        is_done = (
+            "closed" in (s.get("name", "") if isinstance(s, dict) else s).lower()
+            or "completed" in (s.get("name", "") if isinstance(s, dict) else s).lower()
+        )
         # Handle unassigned tasks
         if not owners:
             owners = [{"name": "Unassigned"}]
@@ -221,14 +251,27 @@ async def get_task_utilisation(project_id: str) -> str:
             stats[n]["done" if is_done else "open"] += 1
 
     ranked = sorted(stats.items(), key=lambda x: x[1]["total"], reverse=True)
-    lines = [header, "", "| Member | Total | Open | Done |", "|--------|-------|------|------|"]
+    lines = [
+        header,
+        "",
+        "| Member | Total | Open | Done |",
+        "|--------|-------|------|------|",
+    ]
     for name, s in ranked:
         lines.append(f"| {name} | {s['total']} | {s['open']} | {s['done']} |")
 
     if ranked and ranked[0][1]["total"] > 0:
         top = ranked[0]
-        lines.append(f"\n🏆 **Most tasks:** {top[0]} with **{top[1]['total']} task(s)** ({top[1]['open']} open, {top[1]['done']} done)")
+        lines.append(
+            f"\n🏆 **Most tasks:** {top[0]} with **{top[1]['total']} task(s)** ({top[1]['open']} open, {top[1]['done']} done)"
+        )
     return "\n".join(lines)
 
 
-QUERY_TOOLS = [list_projects, list_tasks, get_task_details, list_project_members, get_task_utilisation]
+QUERY_TOOLS = [
+    list_projects,
+    list_tasks,
+    get_task_details,
+    list_project_members,
+    get_task_utilisation,
+]

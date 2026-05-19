@@ -7,19 +7,18 @@ import os
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, JSONResponse
-
-from app.config import settings
-from app.models import ChatRequest, ChatResponse, AuthStatus, ConfirmationRequest
-from app.database import db
-from app.auth.oauth import zoho_oauth
+from app.agents.graph import get_graph, initialize_graph
 from app.auth.middleware import AuthMiddleware
-from app.agents.graph import initialize_graph, get_graph
-
+from app.auth.oauth import zoho_oauth
+from app.config import settings
+from app.database import db
+from app.models import AuthStatus, ChatRequest, ChatResponse, ConfirmationRequest
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 # ─── App Lifespan ────────────────────────────────────────────
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -48,11 +47,15 @@ app = FastAPI(
 
 # Detect production environment (Railway sets RAILWAY_ENVIRONMENT)
 IS_PRODUCTION = bool(os.getenv("RAILWAY_ENVIRONMENT") or os.getenv("IS_PRODUCTION"))
-COOKIE_SAMESITE  = "none" if IS_PRODUCTION else "lax"
-COOKIE_SECURE    = IS_PRODUCTION
+COOKIE_SAMESITE = "none" if IS_PRODUCTION else "lax"
+COOKIE_SECURE = IS_PRODUCTION
 
 # CORS — allow frontend origin
-allowed_origins = [settings.app.frontend_url, "http://localhost:5173", "http://localhost:3000"]
+allowed_origins = [
+    settings.app.frontend_url,
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -67,6 +70,7 @@ app.add_middleware(AuthMiddleware)
 
 # ─── Health Check ────────────────────────────────────────────
 
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint."""
@@ -74,6 +78,7 @@ async def health_check():
 
 
 # ─── Auth Endpoints ──────────────────────────────────────────
+
 
 @app.get("/auth/login")
 async def auth_login():
@@ -93,9 +98,7 @@ async def auth_callback(code: str = None, error: str = None):
     Exchanges the authorization code for tokens and creates a session.
     """
     if error:
-        return RedirectResponse(
-            url=f"{settings.app.frontend_url}?error={error}"
-        )
+        return RedirectResponse(url=f"{settings.app.frontend_url}?error={error}")
 
     if not code:
         raise HTTPException(status_code=400, detail="Authorization code missing")
@@ -132,9 +135,7 @@ async def auth_callback(code: str = None, error: str = None):
         return response
 
     except Exception as e:
-        return RedirectResponse(
-            url=f"{settings.app.frontend_url}?error={str(e)}"
-        )
+        return RedirectResponse(url=f"{settings.app.frontend_url}?error={str(e)}")
 
 
 @app.get("/auth/status")
@@ -161,17 +162,14 @@ async def auth_logout():
     """Log out the current user by clearing cookies."""
     response = RedirectResponse(url=settings.app.frontend_url)
     response.delete_cookie(
-        "user_id", 
-        path="/", 
-        samesite=COOKIE_SAMESITE, 
-        secure=COOKIE_SECURE, 
-        httponly=True
+        "user_id",
+        path="/",
+        samesite=COOKIE_SAMESITE,
+        secure=COOKIE_SECURE,
+        httponly=True,
     )
     response.delete_cookie(
-        "user_email", 
-        path="/", 
-        samesite=COOKIE_SAMESITE, 
-        secure=COOKIE_SECURE
+        "user_email", path="/", samesite=COOKIE_SAMESITE, secure=COOKIE_SECURE
     )
     return response
 
@@ -182,38 +180,40 @@ async def debug_token(request: Request):
     user_id = request.cookies.get("user_id")
     if not user_id:
         return {"error": "No user_id cookie"}
-        
+
     token_data = await db.get_token(user_id)
     if not token_data:
         return {"error": "No token in DB"}
-        
+
     access_token = token_data["access_token"]
-    
+
     import httpx
+
     async with httpx.AsyncClient() as client:
         # Test 1: Accounts API
         r1 = await client.get(
             "https://accounts.zoho.in/oauth/user/info",
-            headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+            headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
         )
-        
+
         # Test 2: Projects API
         r2 = await client.get(
             f"{settings.zoho.api_base_url}/portals/",
-            headers={"Authorization": f"Zoho-oauthtoken {access_token}"}
+            headers={"Authorization": f"Zoho-oauthtoken {access_token}"},
         )
-        
+
         return {
             "token_preview": access_token[:10] + "..." + access_token[-5:],
             "accounts_status": r1.status_code,
             "accounts_resp": r1.text,
             "projects_status": r2.status_code,
             "projects_resp": r2.text,
-            "portal_name": settings.zoho.portal_name
+            "portal_name": settings.zoho.portal_name,
         }
 
 
 # ─── Chat Endpoint ───────────────────────────────────────────
+
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: Request, chat_request: ChatRequest):
@@ -234,6 +234,7 @@ async def chat(request: Request, chat_request: ChatRequest):
         pending = None
         if result.get("pending_action"):
             from app.models import PendingAction
+
             pending = PendingAction(**result["pending_action"])
 
         return ChatResponse(
@@ -245,6 +246,7 @@ async def chat(request: Request, chat_request: ChatRequest):
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Chat processing error: {str(e)}")
 
@@ -259,7 +261,9 @@ async def chat_confirm(request: Request, conf_request: ConfirmationRequest):
     try:
         pending = await db.get_pending_action(conf_request.session_id)
         if not pending:
-            raise HTTPException(status_code=404, detail="No pending action found for this session.")
+            raise HTTPException(
+                status_code=404, detail="No pending action found for this session."
+            )
 
         if not conf_request.approved:
             await db.resolve_pending_action(pending["id"], "declined")
@@ -289,11 +293,13 @@ async def chat_confirm(request: Request, conf_request: ConfirmationRequest):
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Confirmation error: {str(e)}")
 
 
 # ─── Session Management ─────────────────────────────────────
+
 
 @app.post("/session/new")
 async def create_new_session(request: Request):

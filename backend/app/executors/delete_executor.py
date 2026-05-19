@@ -1,10 +1,14 @@
-from typing import Tuple, Dict, Any
+from typing import Any, Dict, Tuple
+
 from app.executors.base import BaseExecutor
 from app.tools.middleware import validate_delete_task
 from app.zoho.client import ZohoClient
 
+
 class DeleteTaskExecutor(BaseExecutor):
-    async def validate(self, user_id: str, raw_args: Dict[str, Any]) -> Tuple[bool, str, Dict[str, Any]]:
+    async def validate(
+        self, user_id: str, raw_args: Dict[str, Any]
+    ) -> Tuple[bool, str, Dict[str, Any]]:
         return await validate_delete_task(user_id, raw_args)
 
     async def execute(self, user_id: str, params: Dict[str, Any]) -> str:

@@ -23,23 +23,16 @@ STRICT RULES:
 8. Use exactly one tool when possible.
 """
 
+
 class QueryAgent:
     def __init__(self, llm):
         self.llm = llm
         self.tools = QUERY_TOOLS
         self.system_prompt = QUERY_AGENT_PROMPT
-        self.agent = self.llm.bind_tools(
-            self.tools,
-            parallel_tool_calls=False
-        )
+        self.agent = self.llm.bind_tools(self.tools, parallel_tool_calls=False)
 
-    def get_prompt(
-        self,
-        context="",
-        history="",
-        long_term=""
-    ):
-        return f'''
+    def get_prompt(self, context="", history="", long_term=""):
+        return f"""
 {self.system_prompt}
 
 Context:
@@ -50,4 +43,4 @@ History:
 
 Long-Term Memory:
 {long_term}
-'''
+"""
