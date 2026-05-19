@@ -9,8 +9,7 @@ def set_current_user(user_id: str):
     _current_user_id = user_id
 
 
-from app.utils.matcher import EntityResolver
-resolver = EntityResolver(confidence_threshold=75)
+from app.utils.matcher import resolver
 
 async def _resolve_project_id(project_id_or_name: str) -> str:
     """Auto-resolve project name using EntityResolver."""
