@@ -13,7 +13,7 @@ def _get_user_id() -> str:
 
 
 @tool
-async def create_task(project_name: str, task_name: str, description: Optional[str] = None,
+async def create_task(project_name: Optional[str] = None, task_name: Optional[str] = None, description: Optional[str] = None,
                       assignee_name: Optional[str] = None, due_date: Optional[str] = None,
                       priority: Optional[str] = None) -> str:
     """Create a new task in a given project.
@@ -31,7 +31,7 @@ async def create_task(project_name: str, task_name: str, description: Optional[s
 
 
 @tool
-async def update_task(project_name: str, task_name: str, new_name: Optional[str] = None,
+async def update_task(project_name: Optional[str] = None, task_name: Optional[str] = None, new_name: Optional[str] = None,
                       status: Optional[str] = None, assignee_name: Optional[str] = None,
                       due_date: Optional[str] = None, priority: Optional[str] = None) -> str:
     """Update an existing task's properties.
@@ -50,7 +50,7 @@ async def update_task(project_name: str, task_name: str, new_name: Optional[str]
 
 
 @tool
-async def delete_task(project_name: str, task_name: str) -> str:
+async def delete_task(project_name: Optional[str] = None, task_name: Optional[str] = None) -> str:
     """Delete a task from a project. This action is IRREVERSIBLE.
 
     Args:

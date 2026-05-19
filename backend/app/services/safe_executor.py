@@ -3,6 +3,7 @@ from typing import Tuple, Dict, Any
 from app.executors.create_executor import CreateTaskExecutor
 from app.executors.update_executor import UpdateTaskExecutor
 from app.executors.delete_executor import DeleteTaskExecutor
+from app.services.missing_field_resolver import MissingFieldResolver
 
 logger = logging.getLogger("execution_layer")
 
@@ -23,6 +24,12 @@ class SafeExecutorService:
         Orchestrates validation and formats the HIL description.
         Returns: (is_valid, error_msg, resolved_args, hil_description)
         """
+        # 1. Conversational Clarification Layer (Check for missing fields)
+        has_missing, clarification_msg = MissingFieldResolver.check_missing_fields(tool_name, raw_args)
+        if has_missing:
+            return False, clarification_msg, {}, ""
+            
+        # 2. Execution and Pydantic validation layer
         executor = SafeExecutorService.get_executor(tool_name)
         if not executor:
             return False, f"❌ Unknown tool: {tool_name}", {}, ""
