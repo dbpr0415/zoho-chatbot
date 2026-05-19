@@ -8,7 +8,6 @@ import asyncio
 from typing import Annotated, TypedDict
 
 from app.agents.action_agent import ActionAgent
-from app.agents.prompts import get_fallback_prompt
 from app.agents.query_agent import QueryAgent
 from app.agents.supervisor import Supervisor
 from app.config import settings
@@ -277,7 +276,7 @@ class ChatGraph:
         )
         resp = await self.plain_llm.ainvoke(
             [
-                SystemMessage(content=get_fallback_prompt()),
+                SystemMessage(content="Tell the user you couldn't retrieve the requested data. Be brief and helpful."),
                 HumanMessage(content=user_msg),
             ]
         )

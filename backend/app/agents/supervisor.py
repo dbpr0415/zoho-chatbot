@@ -3,8 +3,16 @@ Supervisor/Router — classifies user intent and routes to the correct agent.
 Uses LLM to decide: query (read) or action (write).
 """
 
-from app.agents.prompts import SUPERVISOR_PROMPT
 from langchain_core.messages import SystemMessage
+
+
+SUPERVISOR_PROMPT = """Route request to 'query' (READ) or 'action' (WRITE).
+Reply with exactly ONE word: 'query' or 'action'.
+Write operations = create, update, delete, assign, add, push, throw, drop, make, move, or any conversational slang implying mutation/creation.
+Confirmations/Denials = 'action'.
+Default = 'query'.
+HISTORY: {chat_history}
+USER: {message}"""
 
 
 class Supervisor:
