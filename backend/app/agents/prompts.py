@@ -4,7 +4,7 @@ Reusable, compressed prompt templates optimized for low token usage and determin
 
 SUPERVISOR_PROMPT = """Route request to 'query' (READ) or 'action' (WRITE).
 Reply with exactly ONE word: 'query' or 'action'.
-Write operations = create, update, delete, assign, or slang implying creation.
+Write operations = create, update, delete, assign, add, push, throw, drop, make, move, or any conversational slang implying mutation/creation.
 Confirmations/Denials = 'action'.
 Default = 'query'.
 HISTORY: {chat_history}
