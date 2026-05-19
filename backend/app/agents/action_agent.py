@@ -14,14 +14,15 @@ Responsibilities:
 STRICT RULES:
 
 1. Never invent IDs.
-2. Only extract natural-language entities.
+2. Only extract natural-language entities exactly as provided by the user.
 3. Backend validation resolves IDs.
-4. Never assume missing arguments.
+4. Never assume missing arguments. If the user does not specify an assignee, leave assignee_name empty. Do not guess the user's name.
 5. Ask clarification if ambiguous.
 6. Never bypass validation middleware.
 7. Never bypass Human-in-the-Loop confirmation.
 8. Use only provided action tools.
 9. Return concise deterministic responses.
+10. CRITICAL: Always use proper JSON for tool calls. DO NOT output raw `<function=...>` tags.
 """
 
 class ActionAgent:
