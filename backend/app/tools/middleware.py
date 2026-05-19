@@ -4,6 +4,7 @@ from app.utils.matcher import resolver
 from app.zoho.client import ZohoClient
 from app.schemas.validation import CreateTaskArgs, UpdateTaskArgs, DeleteTaskArgs
 from pydantic import ValidationError
+from app.services.normalization_service import normalizer
 
 logger = logging.getLogger("validation_layer")
 
@@ -28,8 +29,9 @@ def _handle_resolution_error(entity_type: str, raw_name: str, status: str, match
     return f"❌ I couldn't find a {entity_type} matching '{raw_name}'."
 
 async def validate_create_task(user_id: str, raw_args: dict) -> Tuple[bool, str, Dict[str, Any]]:
+    normalized_args = normalizer.normalize_args(raw_args)
     try:
-        args = CreateTaskArgs(**raw_args)
+        args = CreateTaskArgs(**normalized_args)
     except ValidationError as e:
         logger.warning(f"Schema Validation Failed: {e.errors()}")
         return False, f"❌ Validation failed: {e.errors()[0]['msg']}", {}
@@ -58,8 +60,9 @@ async def validate_create_task(user_id: str, raw_args: dict) -> Tuple[bool, str,
     return True, "", resolved_args
 
 async def validate_update_task(user_id: str, raw_args: dict) -> Tuple[bool, str, Dict[str, Any]]:
+    normalized_args = normalizer.normalize_args(raw_args)
     try:
-        args = UpdateTaskArgs(**raw_args)
+        args = UpdateTaskArgs(**normalized_args)
     except ValidationError as e:
         return False, f"❌ Validation failed: {e.errors()[0]['msg']}", {}
 
@@ -93,8 +96,9 @@ async def validate_update_task(user_id: str, raw_args: dict) -> Tuple[bool, str,
     return True, "", resolved_args
 
 async def validate_delete_task(user_id: str, raw_args: dict) -> Tuple[bool, str, Dict[str, Any]]:
+    normalized_args = normalizer.normalize_args(raw_args)
     try:
-        args = DeleteTaskArgs(**raw_args)
+        args = DeleteTaskArgs(**normalized_args)
     except ValidationError as e:
         return False, f"❌ Validation failed: {e.errors()[0]['msg']}", {}
 
