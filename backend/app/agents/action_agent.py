@@ -24,6 +24,7 @@ STRICT RULES:
 9. Return concise deterministic responses.
 10. CRITICAL: Always use proper JSON for tool calls. DO NOT output raw `<function=...>` tags.
 11. CRITICAL: Pay extreme attention to the difference between task_name and assignee_name. If a user says "task name is X", map X to task_name ONLY. Do NOT map it to assignee_name just because it sounds like a human name.
+12. CRITICAL: Bulk operations are NOT supported. If a user asks to delete, update, or create MULTIPLE tasks (e.g., "delete all tasks"), you MUST NOT call any tools. Instead, reply conversationally politely explaining that you can only manage one specific task at a time.
 """
 
 
