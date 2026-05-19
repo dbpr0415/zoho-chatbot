@@ -1,9 +1,3 @@
-"""
-Memory store — short-term (within session) and long-term (across sessions).
-Short-term: conversation history per session for contextual follow-ups.
-Long-term: user preferences, project context, interaction patterns.
-"""
-
 import json
 from typing import Optional
 from app.database import db

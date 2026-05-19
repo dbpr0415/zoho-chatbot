@@ -1,12 +1,6 @@
-"""
-Query tools — 5 read-only tools for the Query Agent.
-Tools: list_projects, list_tasks, get_task_details, list_project_members, get_task_utilisation
-"""
-
 from langchain_core.tools import tool
 from typing import Optional
 
-# ─── Runtime Context (set before each graph invocation) ──────
 _current_user_id: str = ""
 
 
@@ -15,28 +9,24 @@ def set_current_user(user_id: str):
     _current_user_id = user_id
 
 
+from app.utils.matcher import EntityResolver
+resolver = EntityResolver(confidence_threshold=75)
+
 async def _resolve_project_id(project_id_or_name: str) -> str:
-    """Auto-resolve project name → numeric ID. Passthrough if already numeric."""
+    """Auto-resolve project name using EntityResolver."""
     if project_id_or_name.isdigit():
         return project_id_or_name
     from app.zoho.client import ZohoClient
     client = ZohoClient(_current_user_id)
     projects = await client.list_projects()
-    query = project_id_or_name.lower().strip()
-    for p in projects:
-        pname = p.get("name", "").lower()
-        pid = p.get("id_string", str(p.get("id", "")))
-        if query in pname or pname in query:
-            return pid
+    
+    pid, _, _, _ = resolver.resolve_entity(project_id_or_name, projects)
+    if pid:
+        return pid
     return project_id_or_name  # fallback
 
-
 async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
-    """Resolve a task reference (name, index, or ID) → (project_id, task_id).
-    Handles: '444530000000071003', 'first', '1', 'go out', 'first task', etc.
-    Returns (project_id, task_id).
-    """
-    # Already a numeric task ID
+    """Resolve a task reference using EntityResolver."""
     if task_ref.isdigit():
         return project_id, task_ref
 
@@ -47,35 +37,23 @@ async def _resolve_task_id(project_id: str, task_ref: str) -> tuple[str, str]:
     if not tasks:
         return project_id, task_ref
 
+    # Index references fallback
     ref = task_ref.lower().strip()
-
-    # Index references: "first", "1", "second", "2", etc.
-    index_map = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2,
-                 "fourth": 3, "4th": 3, "fifth": 4, "5th": 4, "last": -1}
+    index_map = {"first": 0, "1st": 0, "second": 1, "2nd": 1, "third": 2, "3rd": 2, "last": -1}
     for word, idx in index_map.items():
         if word in ref:
-            t = tasks[idx]
-            return project_id, t.get("id_string", str(t.get("id", task_ref)))
+            try:
+                t = tasks[idx]
+                return project_id, t.get("id_string", str(t.get("id", task_ref)))
+            except IndexError:
+                pass
 
-    # Try numeric index like "1", "2"
-    try:
-        idx = int(ref) - 1
-        if 0 <= idx < len(tasks):
-            t = tasks[idx]
-            return project_id, t.get("id_string", str(t.get("id", task_ref)))
-    except ValueError:
-        pass
-
-    # Name-based match
-    for t in tasks:
-        tname = t.get("name", "").lower()
-        if ref in tname or tname in ref:
-            return project_id, t.get("id_string", str(t.get("id", task_ref)))
+    tid, _, _, _ = resolver.resolve_entity(task_ref, tasks)
+    if tid:
+        return project_id, tid
 
     return project_id, task_ref  # fallback
 
-
-# ─── Tool 1: list_projects ──────────────────────────────────
 
 @tool
 async def list_projects() -> str:
@@ -97,8 +75,6 @@ async def list_projects() -> str:
         lines.append(f"{i}. **{name}** (ID: `{pid}`)\n   Status: {status} | Open Tasks: {open_t}\n")
     return "\n".join(lines)
 
-
-# ─── Tool 2: list_tasks ─────────────────────────────────────
 
 @tool
 async def list_tasks(project_id: str, status: Optional[str] = None, assignee: Optional[str] = None) -> str:
@@ -131,8 +107,6 @@ async def list_tasks(project_id: str, status: Optional[str] = None, assignee: Op
         lines.append(f"{i}. **{name}** (ID: `{tid}`)\n   Status: {st} | Priority: {pri} | Assignee: {own} | Due: {due}\n")
     return "\n".join(lines)
 
-
-# ─── Tool 3: get_task_details ────────────────────────────────
 
 @tool
 async def get_task_details(project_id: str, task_id: str) -> str:
@@ -174,8 +148,6 @@ async def get_task_details(project_id: str, task_id: str) -> str:
     )
 
 
-# ─── Tool 7: list_project_members ───────────────────────────
-
 @tool
 async def list_project_members(project_id: str) -> str:
     """Get all members of a project with their roles.
@@ -196,8 +168,6 @@ async def list_project_members(project_id: str) -> str:
         lines.append(f"{i}. **{m.get('name','?')}** — {m.get('role','Member')}\n   Email: {m.get('email','N/A')}\n")
     return "\n".join(lines)
 
-
-# ─── Tool 8: get_task_utilisation ────────────────────────────
 
 @tool
 async def get_task_utilisation(project_id: str) -> str:
@@ -252,7 +222,7 @@ async def get_task_utilisation(project_id: str) -> str:
             stats[n]["done" if is_done else "open"] += 1
 
     ranked = sorted(stats.items(), key=lambda x: x[1]["total"], reverse=True)
-    lines = [header, "| Member | Total | Open | Done |", "|--------|-------|------|------|"]
+    lines = [header, "", "| Member | Total | Open | Done |", "|--------|-------|------|------|"]
     for name, s in ranked:
         lines.append(f"| {name} | {s['total']} | {s['open']} | {s['done']} |")
 
@@ -262,5 +232,4 @@ async def get_task_utilisation(project_id: str) -> str:
     return "\n".join(lines)
 
 
-# ─── Export ──────────────────────────────────────────────────
 QUERY_TOOLS = [list_projects, list_tasks, get_task_details, list_project_members, get_task_utilisation]

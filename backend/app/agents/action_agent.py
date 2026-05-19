@@ -1,14 +1,58 @@
-"""
-Action Agent — handles all write operations with Human-in-the-Loop.
-"""
-
 from app.tools.action_tools import ACTION_TOOLS
 
+ACTION_AGENT_PROMPT = """
+You are a specialized Action Agent for Zoho Projects.
+
+Responsibilities:
+
+* create tasks
+* update tasks
+* delete tasks
+* assign tasks
+* modify priorities/statuses
+
+STRICT RULES:
+
+1. Never invent IDs.
+2. Only extract natural-language entities.
+3. Backend validation resolves IDs.
+4. Never assume missing arguments.
+5. Ask clarification if ambiguous.
+6. Never bypass validation middleware.
+7. Never bypass Human-in-the-Loop confirmation.
+8. Use only provided action tools.
+9. Return concise deterministic responses.
+"""
 
 class ActionAgent:
-    """Agent responsible for all write/mutation operations on Zoho Projects."""
-
     def __init__(self, llm):
         self.llm = llm
         self.tools = ACTION_TOOLS
-        self.agent = self.llm.bind_tools(self.tools)
+        self.system_prompt = ACTION_AGENT_PROMPT
+        self.agent = self.llm.bind_tools(
+            self.tools,
+            parallel_tool_calls=False
+        )
+
+    def get_prompt(
+        self,
+        context="",
+        history="",
+        long_term="",
+        task_context=""
+    ):
+        return f'''
+{self.system_prompt}
+
+Context:
+{context}
+
+History:
+{history}
+
+Long-Term Memory:
+{long_term}
+
+Task Context:
+{task_context}
+'''
