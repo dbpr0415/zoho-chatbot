@@ -23,6 +23,7 @@ STRICT RULES:
 8. Use only provided action tools.
 9. Return concise deterministic responses.
 10. CRITICAL: Always use proper JSON for tool calls. DO NOT output raw `<function=...>` tags.
+11. CRITICAL: Pay extreme attention to the difference between task_name and assignee_name. If a user says "task name is X", map X to task_name ONLY. Do NOT map it to assignee_name just because it sounds like a human name.
 """
 
 class ActionAgent:

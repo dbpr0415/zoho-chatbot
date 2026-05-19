@@ -22,7 +22,7 @@ async def create_task(project_name: Optional[str] = None, task_name: Optional[st
         project_name: Natural language name of the project (e.g. 'interviews', 'sky secure')
         task_name: Name/title of the new task
         description: Optional task description
-        assignee_name: Optional natural language name of the team member to assign
+        assignee_name: ONLY populate this if the user explicitly asks to assign the task to someone. Do not guess.
         due_date: Optional due date in MM-DD-YYYY format
         priority: Optional priority — Low, Medium, High
     """
@@ -41,7 +41,7 @@ async def update_task(project_name: Optional[str] = None, task_name: Optional[st
         task_name: Natural language name of the task
         new_name: Optional new name for the task
         status: New status — 'Open' or 'Closed'
-        assignee_name: New assignee name
+        assignee_name: ONLY populate this if the user explicitly asks to assign the task. Do not guess.
         due_date: New due date in MM-DD-YYYY format
         priority: New priority — Low, Medium, High
     """
