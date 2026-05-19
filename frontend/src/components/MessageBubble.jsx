@@ -8,7 +8,7 @@ const AGENT_CONFIG = {
 };
 
 function hasOverdue(text) {
-  return /overdue|past due|missed|late/i.test(text);
+  return /overdue|past due|missed|\blate\b/i.test(text);
 }
 function hasHighPriority(text) {
   return /\bhigh\b.*priority|priority.*\bhigh\b/i.test(text);
